@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Plus, Trash2, Play, RotateCcw, AlertTriangle, CheckCircle2, Clock, ChevronDown, Download } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { Plus, Trash2, Play, RotateCcw, AlertTriangle, CheckCircle2, Clock, ChevronDown, Download, Package, Sparkles } from 'lucide-react';
 import { calculateCPM } from '../utils/cpmUtils';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -11,7 +11,7 @@ const getActivityLabel = (index) => {
   return LETTERS[first] + LETTERS[second];
 };
 
-const SchedulePanel = ({ selectedSite }) => {
+const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
   // 從 localStorage 讀取排程資料
   const [activities, setActivities] = useState(() => {
     const saved = localStorage.getItem(`dashboard_schedule_${selectedSite}`);
@@ -69,6 +69,36 @@ const SchedulePanel = ({ selectedSite }) => {
     // 滾動到底部
     setTimeout(() => tableEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
+
+  // 自動將新材料同步到物料管理清單
+  const autoAddMaterial = useCallback((materialName) => {
+    if (!materialName || !materialName.trim() || !setMaterials) return;
+    const trimmed = materialName.trim();
+    const exists = materials.some(m => m.name === trimmed);
+    if (!exists) {
+      setMaterials(prev => [...prev, { name: trimmed, unit: 'Unit' }]);
+    }
+  }, [materials, setMaterials]);
+
+  // 追蹤哪些材料是從排程自動新增的（用於顯示提示）
+  const [recentlyAdded, setRecentlyAdded] = useState([]);
+
+  const handleMaterialBlur = useCallback((materialName) => {
+    if (!materialName || !materialName.trim() || !setMaterials) return;
+    const trimmed = materialName.trim();
+    const exists = materials.some(m => m.name === trimmed);
+    if (!exists) {
+      setMaterials(prev => [...prev, { name: trimmed, unit: 'Unit' }]);
+      setRecentlyAdded(prev => {
+        const updated = [...prev, trimmed];
+        // 3 秒後移除提示
+        setTimeout(() => {
+          setRecentlyAdded(p => p.filter(n => n !== trimmed));
+        }, 3000);
+        return updated;
+      });
+    }
+  }, [materials, setMaterials]);
 
   // 刪除作業列
   const removeActivity = (index) => {
@@ -163,6 +193,19 @@ const SchedulePanel = ({ selectedSite }) => {
     return activities.slice(0, currentIndex).map(a => ({ id: a.id, name: a.name }));
   };
 
+  // 從排程清單中彙整所有不重複的材料
+  const scheduleMaterials = useMemo(() => {
+    const map = {};
+    activities.forEach(a => {
+      if (a.materials && a.materials.trim()) {
+        const key = a.materials.trim();
+        if (!map[key]) map[key] = 0;
+        if (a.materialQty) map[key] += Number(a.materialQty) || 0;
+      }
+    });
+    return Object.entries(map).map(([name, totalQty]) => ({ name, totalQty }));
+  }, [activities]);
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* 標題區 */}
@@ -230,6 +273,7 @@ const SchedulePanel = ({ selectedSite }) => {
                 onTogglePred={togglePredecessor}
                 onRemove={removeActivity}
                 canRemove={activities.length > 1}
+                onMaterialBlur={handleMaterialBlur}
               />
             ))}
             <div ref={tableEndRef} />
@@ -243,6 +287,53 @@ const SchedulePanel = ({ selectedSite }) => {
             <Plus className="w-4 h-4" /> 新增作業 ({getActivityLabel(activities.length)})
           </button>
         </div>
+
+        {/* 排程材料彙整 & 同步提示 */}
+        {scheduleMaterials.length > 0 && (
+          <div className="px-6 pb-6">
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200/60 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-1.5 bg-indigo-100 rounded-lg">
+                  <Package className="w-4 h-4 text-indigo-600" />
+                </div>
+                <span className="text-sm font-black text-indigo-900 uppercase tracking-tight">本排程所需材料</span>
+                <span className="ml-auto text-xs font-bold text-indigo-400 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  已自動同步至物料管理
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {scheduleMaterials.map(({ name, totalQty }) => {
+                  const isNew = recentlyAdded.includes(name);
+                  const existsInMgmt = materials.some(m => m.name === name);
+                  return (
+                    <div
+                      key={name}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-500 ${
+                        isNew
+                          ? 'bg-emerald-100 border-emerald-400 text-emerald-800 animate-pulse'
+                          : existsInMgmt
+                          ? 'bg-white border-indigo-200 text-indigo-700'
+                          : 'bg-amber-50 border-amber-300 text-amber-700'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        isNew ? 'bg-emerald-500' : existsInMgmt ? 'bg-indigo-400' : 'bg-amber-400'
+                      }`} />
+                      {name}
+                      {totalQty > 0 && (
+                        <span className="opacity-70">× {totalQty.toLocaleString()}</span>
+                      )}
+                      {isNew && (
+                        <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-black">NEW</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 計算按鈕 */}
         <div className="p-6 border-t border-slate-300/50 bg-gradient-to-r from-slate-100 to-slate-50">
@@ -406,7 +497,7 @@ const SchedulePanel = ({ selectedSite }) => {
 /**
  * 單一作業輸入列
  */
-const ActivityRow = ({ activity, index, availablePredecessors, onUpdate, onTogglePred, onRemove, canRemove }) => {
+const ActivityRow = ({ activity, index, availablePredecessors, onUpdate, onTogglePred, onRemove, canRemove, onMaterialBlur }) => {
   const [isPredOpen, setIsPredOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -446,6 +537,7 @@ const ActivityRow = ({ activity, index, availablePredecessors, onUpdate, onToggl
         className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-900 font-bold placeholder:text-slate-400 placeholder:font-normal focus:bg-indigo-50/10 focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all outline-none shadow-sm"
         value={activity.materials || ''}
         onChange={(e) => onUpdate(index, 'materials', e.target.value)}
+        onBlur={(e) => onMaterialBlur && onMaterialBlur(e.target.value)}
       />
 
       {/* 數量 */}

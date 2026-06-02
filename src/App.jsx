@@ -586,7 +586,11 @@ function App() {
 
 
         {activeView === 'schedule' ? (
-          <SchedulePanel selectedSite={selectedSite} />
+          <SchedulePanel
+            selectedSite={selectedSite}
+            materials={materials}
+            setMaterials={setMaterials}
+          />
         ) : (
         <>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
