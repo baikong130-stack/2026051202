@@ -590,6 +590,8 @@ function App() {
             selectedSite={selectedSite}
             materials={materials}
             setMaterials={setMaterials}
+            consumptions={consumptions}
+            setConsumptions={setConsumptions}
           />
         ) : (
         <>

@@ -1,6 +1,17 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Play, RotateCcw, AlertTriangle, CheckCircle2, Clock, ChevronDown, Download, Package, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Play, RotateCcw, AlertTriangle, CheckCircle2, Clock, ChevronDown, Download, Package, Sparkles, CalendarDays, Zap } from 'lucide-react';
 import { calculateCPM } from '../utils/cpmUtils';
+
+// 將 ES/EF 天數加上開始日期，轉換為實際日曆日期
+const addDaysToDate = (startDateStr, days) => {
+  if (!startDateStr) return null;
+  const d = new Date(startDateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+};
+
+// 取得今天日期字串 YYYY-MM-DD
+const getTodayStr = () => new Date().toISOString().split('T')[0];
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -11,7 +22,7 @@ const getActivityLabel = (index) => {
   return LETTERS[first] + LETTERS[second];
 };
 
-const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
+const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumptions = [], setConsumptions }) => {
   // 從 localStorage 讀取排程資料
   const [activities, setActivities] = useState(() => {
     const saved = localStorage.getItem(`dashboard_schedule_${selectedSite}`);
@@ -29,14 +40,27 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
   const [hasCalculated, setHasCalculated] = useState(false);
   const tableEndRef = useRef(null);
 
+  // 工程開始日期
+  const [projectStartDate, setProjectStartDate] = useState(() => {
+    return localStorage.getItem(`dashboard_schedule_startdate_${selectedSite}`) || getTodayStr();
+  });
+
+  // 儲存開始日期至 localStorage
+  useEffect(() => {
+    localStorage.setItem(`dashboard_schedule_startdate_${selectedSite}`, projectStartDate);
+  }, [projectStartDate, selectedSite]);
+
   // 當工地改變時重新載入資料
   useEffect(() => {
     const saved = localStorage.getItem(`dashboard_schedule_${selectedSite}`);
+    const savedDate = localStorage.getItem(`dashboard_schedule_startdate_${selectedSite}`);
+    if (savedDate) setProjectStartDate(savedDate);
+    else setProjectStartDate(getTodayStr());
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         setActivities(parsed);
-        // 自動計算已儲存的有效資料
         const valid = parsed.filter(a => a.name && a.duration > 0);
         if (valid.length > 0) {
           setResults(calculateCPM(valid));
@@ -169,14 +193,17 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
   const handleExportSchedule = () => {
     if (!results) return;
     let text = `工程排程分析報告 - ${selectedSite}\n`;
+    text += `工程開始日期: ${projectStartDate}\n`;
     text += `${'='.repeat(80)}\n`;
     text += `專案總工期: ${results.projectDuration} 天\n`;
     text += `要徑作業: ${results.criticalActivities.join(' → ')}\n\n`;
     text += `${'─'.repeat(80)}\n`;
-    text += `作業\t名稱\t\t所需材料\t數量\t工期\t前置\tES\tEF\tLS\tLF\t總浮時\t自由浮時\t要徑\n`;
+    text += `作業\t名稱\t\t材料\t數量\t工期\t前置\tES\tEF\t計畫開始\t計畫完成\t要徑\n`;
     text += `${'─'.repeat(80)}\n`;
     results.results.forEach(r => {
-      text += `${r.id}\t${r.name}\t\t${r.materials || '-'}\t\t${r.materialQty || '-'}\t${r.duration}\t${r.predecessors.join(',') || '-'}\t${r.es}\t${r.ef}\t${r.ls}\t${r.lf}\t${r.totalFloat}\t${r.freeFloat}\t\t${r.isCritical ? '★' : ''}\n`;
+      const planStart = addDaysToDate(projectStartDate, r.es);
+      const planEnd   = addDaysToDate(projectStartDate, r.ef);
+      text += `${r.id}\t${r.name}\t\t${r.materials || '-'}\t\t${r.materialQty || '-'}\t${r.duration}\t${r.predecessors.join(',') || '-'}\t${r.es}\t${r.ef}\t${planStart}\t${planEnd}\t${r.isCritical ? '★' : ''}\n`;
     });
     
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -186,6 +213,31 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
     a.download = `排程分析_${selectedSite}_${new Date().toISOString().split('T')[0]}.txt`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // 同步排程材料至消耗紀錄
+  const handleSyncToConsumptions = () => {
+    if (!results || !setConsumptions) return;
+    const toSync = results.results.filter(r => r.materials && r.materials.trim() && Number(r.materialQty) > 0);
+    if (toSync.length === 0) {
+      alert('沒有作業填寫材料名稱和數量，無法同步。');
+      return;
+    }
+    const preview = toSync.map(r => {
+      const planStart = addDaysToDate(projectStartDate, r.es);
+      return `「${r.name}」: ${r.materials} × ${r.materialQty} （${planStart}）`;
+    }).join('\n');
+    if (!window.confirm(`將以下排程材料自動新增至消耗紀錄？\n\n${preview}\n\n點擊「確定」將新增 ${toSync.length} 筆消耗紀錄。`)) return;
+    const newEntries = toSync.map(r => ({
+      id: `sched-${Date.now()}-${r.id}-${Math.random().toString(36).substr(2, 6)}`,
+      date: addDaysToDate(projectStartDate, r.es),
+      type: r.materials.trim(),
+      theoreticalQuantity: Number(r.materialQty),
+      stage: r.name,
+      supplier: '排程自動建立',
+    }));
+    setConsumptions(prev => [...prev, ...newEntries]);
+    alert(`已成功同步 ${newEntries.length} 筆消耗紀錄至物料管理！`);
   };
 
   // 取得可選的前置作業清單 (排除自己和之後的作業)
@@ -209,7 +261,7 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* 標題區 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter flex items-center gap-3">
             <div className="p-2.5 bg-indigo-500/10 rounded-xl border border-indigo-500/20 shadow-inner">
@@ -220,6 +272,17 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
           <p className="text-slate-500 mt-1 text-sm font-medium">
             批次新增作業，自動計算要徑法 (Critical Path Method) 分析
           </p>
+        </div>
+        {/* 工程開始日期選擇器 */}
+        <div className="flex items-center gap-3 bg-white border border-indigo-200 rounded-2xl px-4 py-2.5 shadow-sm">
+          <CalendarDays className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+          <span className="text-xs font-black text-indigo-700 uppercase tracking-wider whitespace-nowrap">工程開始日期</span>
+          <input
+            type="date"
+            value={projectStartDate}
+            onChange={e => setProjectStartDate(e.target.value)}
+            className="bg-transparent text-sm font-bold text-slate-800 outline-none cursor-pointer hover:text-indigo-600 transition-colors"
+          />
         </div>
         <div className="flex items-center gap-3">
           {results && (
@@ -395,11 +458,16 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
                   <th className="px-4 py-4 text-center text-xs font-black text-purple-600 uppercase tracking-wider bg-purple-50/50">LF</th>
                   <th className="px-4 py-4 text-center text-xs font-black text-amber-600 uppercase tracking-wider bg-amber-50/50">總浮時</th>
                   <th className="px-4 py-4 text-center text-xs font-black text-amber-600 uppercase tracking-wider bg-amber-50/50">自由浮時</th>
+                  <th className="px-4 py-4 text-center text-xs font-black text-emerald-700 uppercase tracking-wider bg-emerald-50/60">計畫開始日</th>
+                  <th className="px-4 py-4 text-center text-xs font-black text-emerald-700 uppercase tracking-wider bg-emerald-50/60">計畫完成日</th>
                   <th className="px-4 py-4 text-center text-xs font-black text-red-600 uppercase tracking-wider">要徑</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {results.results.map((r, i) => (
+                {results.results.map((r, i) => {
+                    const planStart = addDaysToDate(projectStartDate, r.es);
+                    const planEnd   = addDaysToDate(projectStartDate, r.ef);
+                    return (
                   <tr
                     key={r.id}
                     className={`transition-colors ${
@@ -452,6 +520,12 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
                     <td className={`px-4 py-3.5 text-center font-mono font-bold bg-amber-50/30 ${r.freeFloat === 0 ? 'text-red-600' : 'text-amber-600'}`}>
                       {r.freeFloat}
                     </td>
+                    <td className="px-4 py-3.5 text-center font-mono text-xs font-bold text-emerald-700 bg-emerald-50/40">
+                      {planStart || <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3.5 text-center font-mono text-xs font-bold text-emerald-700 bg-emerald-50/40">
+                      {planEnd || <span className="text-slate-400">—</span>}
+                    </td>
                     <td className="px-4 py-3.5 text-center">
                       {r.isCritical ? (
                         <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-500 text-white rounded-full text-xs font-black shadow-md shadow-red-500/30 animate-pulse">
@@ -462,14 +536,15 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
                       )}
                     </td>
                   </tr>
-                ))}
+                    );
+                  })}
               </tbody>
             </table>
           </div>
 
-          {/* 圖例說明 */}
+          {/* 圖例說明 + 同步按鈕 */}
           <div className="p-6 border-t border-slate-200/50 bg-gradient-to-r from-slate-50 to-white">
-            <div className="flex flex-wrap gap-6 text-xs font-bold text-slate-500">
+            <div className="flex flex-wrap gap-6 text-xs font-bold text-slate-500 mb-5">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded bg-indigo-500"></div>
                 <span>ES/EF: 最早開始/完成時間</span>
@@ -483,10 +558,21 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials }) => {
                 <span>浮時: 可延遲天數</span>
               </div>
               <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-emerald-500"></div>
+                <span>計畫日期: 工程開始日期 + ES/EF 天數</span>
+              </div>
+              <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded bg-red-500"></div>
                 <span>要徑: 總浮時=0 的作業 (不可延遲)</span>
               </div>
             </div>
+            {/* 同步至消耗紀錄按鈕 */}
+            <button
+              onClick={handleSyncToConsumptions}
+              className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:translate-y-[-2px] active:translate-y-0"
+            >
+              <Zap className="w-5 h-5" /> 同步工程進度至物料管理
+            </button>
           </div>
         </div>
       )}
