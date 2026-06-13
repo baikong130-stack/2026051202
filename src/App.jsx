@@ -26,6 +26,23 @@ if (localStorage.getItem('dashboard_procurement') && !localStorage.getItem('dash
   localStorage.removeItem('dashboard_materials');
 }
 
+// 自動清除舊的範例資料（2024 年模擬數據），保留材料類型清單
+if (!localStorage.getItem('dashboard_mock_cleared_v1')) {
+  const sites = JSON.parse(localStorage.getItem('dashboard_sites') || '["主工地"]');
+  sites.forEach(site => {
+    const procKey = `dashboard_procurement_${site}`;
+    const consKey = `dashboard_consumption_${site}`;
+    const proc = JSON.parse(localStorage.getItem(procKey) || '[]');
+    const cons = JSON.parse(localStorage.getItem(consKey) || '[]');
+    // 若資料全部都是 2024 年的範例資料，則自動清除
+    const hasMockProc = proc.length > 0 && proc.every(p => p.date && p.date.startsWith('2024-05'));
+    const hasMockCons = cons.length > 0 && cons.every(c => c.date && c.date.startsWith('2024-05'));
+    if (hasMockProc) localStorage.setItem(procKey, '[]');
+    if (hasMockCons) localStorage.setItem(consKey, '[]');
+  });
+  localStorage.setItem('dashboard_mock_cleared_v1', '1');
+}
+
 function App() {
   const initialSites = (() => {
     const saved = localStorage.getItem('dashboard_sites');
@@ -83,11 +100,11 @@ function App() {
   }, [materials, selectedMaterial]);
 
   const filteredProc = useMemo(() => 
-    procurements.filter(p => p.type === selectedMaterial), 
+    procurements.filter(p => (p.type || '').trim() === selectedMaterial.trim()), 
   [selectedMaterial, procurements]);
 
   const filteredCons = useMemo(() => 
-    consumptions.filter(c => c.type === selectedMaterial), 
+    consumptions.filter(c => (c.type || '').trim() === selectedMaterial.trim()), 
   [selectedMaterial, consumptions]);
 
   const { timeline, kpis, supplierStats } = useMemo(() => 

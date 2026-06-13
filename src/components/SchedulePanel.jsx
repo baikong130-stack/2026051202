@@ -32,7 +32,7 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
       } catch (e) { /* ignore */ }
     }
     return [
-      { id: 'A', name: '', duration: '', predecessors: [], materials: '', materialQty: '' },
+      { id: 'A', name: '', duration: '', predecessors: [], materials: '', materialQty: '', manpower: '' },
     ];
   });
 
@@ -70,12 +70,12 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
           setHasCalculated(false);
         }
       } catch (e) {
-        setActivities([{ id: 'A', name: '', duration: '', predecessors: [], materials: '', materialQty: '' }]);
+        setActivities([{ id: 'A', name: '', duration: '', predecessors: [], materials: '', materialQty: '', manpower: '' }]);
         setResults(null);
         setHasCalculated(false);
       }
     } else {
-      setActivities([{ id: 'A', name: '', duration: '', predecessors: [], materials: '', materialQty: '' }]);
+      setActivities([{ id: 'A', name: '', duration: '', predecessors: [], materials: '', materialQty: '', manpower: '' }]);
       setResults(null);
       setHasCalculated(false);
     }
@@ -89,7 +89,7 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
   // 新增作業列
   const addActivity = () => {
     const newId = getActivityLabel(activities.length);
-    setActivities([...activities, { id: newId, name: '', duration: '', predecessors: [], materials: '', materialQty: '' }]);
+    setActivities([...activities, { id: newId, name: '', duration: '', predecessors: [], materials: '', materialQty: '', manpower: '' }]);
     // 滾動到底部
     setTimeout(() => tableEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
@@ -183,7 +183,7 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
   // 重置
   const handleReset = () => {
     if (window.confirm('確定要清除所有排程資料嗎？')) {
-      setActivities([{ id: 'A', name: '', duration: '', predecessors: [], materials: '', materialQty: '' }]);
+      setActivities([{ id: 'A', name: '', duration: '', predecessors: [], materials: '', materialQty: '', manpower: '' }]);
       setResults(null);
       setHasCalculated(false);
     }
@@ -198,12 +198,12 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
     text += `專案總工期: ${results.projectDuration} 天\n`;
     text += `要徑作業: ${results.criticalActivities.join(' → ')}\n\n`;
     text += `${'─'.repeat(80)}\n`;
-    text += `作業\t名稱\t\t材料\t數量\t工期\t前置\tES\tEF\t計畫開始\t計畫完成\t要徑\n`;
+    text += `作業\t名稱\t\t材料\t數量\t人力(人)\t工期\t前置\tES\tEF\t計畫開始\t計畫完成\t要徑\n`;
     text += `${'─'.repeat(80)}\n`;
     results.results.forEach(r => {
       const planStart = addDaysToDate(projectStartDate, r.es);
       const planEnd   = addDaysToDate(projectStartDate, r.ef);
-      text += `${r.id}\t${r.name}\t\t${r.materials || '-'}\t\t${r.materialQty || '-'}\t${r.duration}\t${r.predecessors.join(',') || '-'}\t${r.es}\t${r.ef}\t${planStart}\t${planEnd}\t${r.isCritical ? '★' : ''}\n`;
+      text += `${r.id}\t${r.name}\t\t${r.materials || '-'}\t\t${r.materialQty || '-'}\t${r.manpower || '-'}\t${r.duration}\t${r.predecessors.join(',') || '-'}\t${r.es}\t${r.ef}\t${planStart}\t${planEnd}\t${r.isCritical ? '★' : ''}\n`;
     });
     
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -314,11 +314,12 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
 
         <div className="p-6">
           {/* 表頭 */}
-          <div className="grid grid-cols-[50px_1.2fr_1fr_80px_80px_1fr_40px] gap-4 mb-3 px-3">
+          <div className="grid grid-cols-[50px_1.2fr_1fr_80px_70px_70px_1fr_40px] gap-4 mb-3 px-3">
             <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">編號</div>
             <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">作業名稱</div>
             <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">所需材料</div>
             <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">數量</div>
+            <div className="text-xs font-bold text-slate-700 uppercase tracking-wider text-orange-600">人力(人)</div>
             <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">工期(天)</div>
             <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">前置作業</div>
             <div></div>
@@ -450,6 +451,7 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
                   <th className="px-4 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-wider">作業名稱</th>
                   <th className="px-4 py-4 text-left text-xs font-black text-slate-600 uppercase tracking-wider">所需材料</th>
                   <th className="px-4 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-wider">數量</th>
+                  <th className="px-4 py-4 text-center text-xs font-black text-orange-600 uppercase tracking-wider bg-orange-50/50">人力(人)</th>
                   <th className="px-4 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-wider">工期</th>
                   <th className="px-4 py-4 text-center text-xs font-black text-slate-600 uppercase tracking-wider">前置作業</th>
                   <th className="px-4 py-4 text-center text-xs font-black text-indigo-600 uppercase tracking-wider bg-indigo-50/50">ES</th>
@@ -493,6 +495,14 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
                     </td>
                     <td className="px-4 py-3.5 text-center text-slate-600 font-mono text-xs font-bold">
                       {r.materialQty || <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3.5 text-center font-mono text-xs font-bold text-orange-700 bg-orange-50/30">
+                      {r.manpower ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span>{r.manpower}</span>
+                          <span className="text-orange-400 text-[10px]">人</span>
+                        </span>
+                      ) : <span className="text-slate-400">—</span>}
                     </td>
                     <td className="px-4 py-3.5 text-center font-mono font-bold text-slate-700">
                       {r.duration}
@@ -599,7 +609,7 @@ const ActivityRow = ({ activity, index, availablePredecessors, onUpdate, onToggl
   }, []);
 
   return (
-    <div className="grid grid-cols-[50px_1.2fr_1fr_80px_80px_1fr_40px] gap-4 items-center bg-slate-100 p-3 rounded-xl border border-slate-300 hover:border-indigo-400 hover:shadow-md transition-all group">
+    <div className="grid grid-cols-[50px_1.2fr_1fr_80px_70px_70px_1fr_40px] gap-4 items-center bg-slate-100 p-3 rounded-xl border border-slate-300 hover:border-indigo-400 hover:shadow-md transition-all group">
       {/* 編號 */}
       <div className="flex items-center justify-center">
         <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-200 text-indigo-700 text-sm font-black shadow-inner">
@@ -634,6 +644,16 @@ const ActivityRow = ({ activity, index, availablePredecessors, onUpdate, onToggl
         className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-900 font-mono font-bold text-center placeholder:text-slate-400 placeholder:font-normal focus:bg-indigo-50/10 focus:ring-4 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all outline-none shadow-sm"
         value={activity.materialQty || ''}
         onChange={(e) => onUpdate(index, 'materialQty', e.target.value)}
+      />
+
+      {/* 所需人力 */}
+      <input
+        type="number"
+        min="0"
+        placeholder="人數"
+        className="w-full bg-white border border-orange-200 rounded-lg px-3 py-2.5 text-sm text-orange-800 font-mono font-bold text-center placeholder:text-slate-400 placeholder:font-normal focus:bg-orange-50/20 focus:ring-4 focus:ring-orange-400/30 focus:border-orange-400 transition-all outline-none shadow-sm"
+        value={activity.manpower || ''}
+        onChange={(e) => onUpdate(index, 'manpower', e.target.value)}
       />
 
       {/* 工期 */}
