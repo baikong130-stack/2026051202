@@ -77,3 +77,43 @@ export const importFromExcel = (file) => {
     reader.readAsArrayBuffer(file);
   });
 };
+
+export const importScheduleFromExcel = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        let activities = [];
+
+        // Parse Schedule Sheet
+        const sheetName = workbook.SheetNames.find(name => name.includes("工程排程") || name.includes("排程"));
+        if (sheetName) {
+          const sheet = workbook.Sheets[sheetName];
+          const json = XLSX.utils.sheet_to_json(sheet);
+          activities = json.map((row) => ({
+            id: row['編號'] || row['作業編號'] || '',
+            name: row['作業名稱'] || '',
+            materials: row['所需材料'] || '',
+            materialQty: row['材料數量'] || row['數量'] ? String(row['材料數量'] || row['數量']) : '',
+            manpower: row['所需人力'] || row['人力(人)'] ? String(row['所需人力'] || row['人力(人)']) : '',
+            duration: row['工期(天)'] || row['工期'] ? String(row['工期(天)'] || row['工期']) : '',
+            predecessors: row['前置作業(逗號分隔)'] || row['前置作業'] 
+              ? String(row['前置作業(逗號分隔)'] || row['前置作業']).split(',').map(s => s.trim()).filter(Boolean)
+              : []
+          })).filter(a => a.id && a.name); // Basic validation
+        }
+
+        resolve(activities);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    reader.onerror = (error) => reject(error);
+    reader.readAsArrayBuffer(file);
+  });
+};

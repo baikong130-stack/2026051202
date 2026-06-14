@@ -1,7 +1,7 @@
 /**
  * 計算工程物料動態管理所需的核心指標與時間序列數據
  */
-export const processDashboardData = (procurements, consumptions) => {
+export const processDashboardData = (procurements, consumptions, leadTime = 3) => {
   const allDates = Array.from(new Set([
     ...procurements.map(p => p.date),
     ...consumptions.map(c => c.date)
@@ -27,7 +27,7 @@ export const processDashboardData = (procurements, consumptions) => {
     const unitCost = cumulativeProcured > 0 ? cumulativeCost / cumulativeProcured : 0;
 
     let futureThreeDaysCons = 0;
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= leadTime; i++) {
       if (index + i < allDates.length) {
         const nextDate = allDates[index + i];
         const nextCons = consumptions
@@ -67,6 +67,24 @@ export const processDashboardData = (procurements, consumptions) => {
 
   const latest = timeline[timeline.length - 1] || { inventory: 0, unitCost: 0, cumulativeCost: 0, isAtRisk: false };
 
+  let exactShortageDate = null;
+  let exactShortageConsQty = 0;
+  for (let i = 0; i < timeline.length; i++) {
+    if (timeline[i].inventory < 0) {
+      exactShortageDate = timeline[i].date;
+      exactShortageConsQty = timeline[i].consQty;
+      break;
+    }
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  let recommendedOrderDate = todayStr;
+  if (exactShortageDate) {
+    const d = new Date(exactShortageDate);
+    d.setDate(d.getDate() - leadTime);
+    recommendedOrderDate = d.toISOString().split('T')[0];
+  }
+
   return {
     timeline,
     supplierStats,
@@ -76,6 +94,9 @@ export const processDashboardData = (procurements, consumptions) => {
       totalSpent: latest.cumulativeCost,
       isAtRisk: latest.isAtRisk,
       spi: cumulativeConsumed > 0 ? cumulativeProcured / cumulativeConsumed : 0,
+      recommendedOrderDate,
+      exactShortageDate,
+      exactShortageConsQty
     }
   };
 };

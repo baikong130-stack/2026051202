@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertTriangle, ChevronRight, Phone, Star } from 'lucide-react';
 
-const RiskBanner = ({ isVisible, materialName, defaultSuppliers, onQuickReplenish }) => {
+const RiskBanner = ({ isVisible, materialName, defaultSuppliers, onQuickReplenish, leadTime = 3 }) => {
   if (!isVisible) return null;
 
   const bestSupplier = defaultSuppliers?.length > 0 
@@ -15,7 +15,7 @@ const RiskBanner = ({ isVisible, materialName, defaultSuppliers, onQuickReplenis
           <AlertTriangle className="w-5 h-5 text-white" />
         </div>
         <div>
-          <p className="font-bold text-sm">斷料預警：當前庫存不足以支撐未來三天的工程計畫</p>
+          <p className="font-bold text-sm">斷料預警：當前庫存不足以支撐未來 {leadTime} 天的工程計畫</p>
           <p className="text-[10px] opacity-80 uppercase tracking-widest font-semibold">Critical Inventory Risk Detected</p>
         </div>
       </div>

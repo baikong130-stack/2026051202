@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Play, RotateCcw, AlertTriangle, CheckCircle2, Clock, ChevronDown, Download, Package, Sparkles, CalendarDays, Zap } from 'lucide-react';
+import { Plus, Trash2, Play, RotateCcw, AlertTriangle, CheckCircle2, Clock, ChevronDown, Download, Package, Sparkles, CalendarDays, Zap, Upload } from 'lucide-react';
 import { calculateCPM } from '../utils/cpmUtils';
+import { importScheduleFromExcel } from '../utils/importUtils';
 
 // 將 ES/EF 天數加上開始日期，轉換為實際日曆日期
 const addDaysToDate = (startDateStr, days) => {
@@ -39,6 +40,7 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
   const [results, setResults] = useState(null);
   const [hasCalculated, setHasCalculated] = useState(false);
   const tableEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // 工程開始日期
   const [projectStartDate, setProjectStartDate] = useState(() => {
@@ -189,6 +191,40 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
     }
   };
 
+  // 匯入排程
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const newActivities = await importScheduleFromExcel(file);
+      
+      if (newActivities.length === 0) {
+        alert('檔案中找不到有效的「工程排程」資料！');
+        return;
+      }
+
+      const isOverwrite = window.confirm('匯入資料解析成功。是否要覆蓋現有資料？\n\n- 選擇「確定」將清除現有排程並填入新資料\n- 選擇「取消」將新資料附加到現有排程中');
+      
+      if (isOverwrite) {
+        setActivities(newActivities);
+      } else {
+        setActivities([...activities, ...newActivities]);
+      }
+      
+      setResults(null);
+      setHasCalculated(false);
+      alert('排程資料匯入成功！');
+    } catch (error) {
+      console.error("Import error:", error);
+      alert('檔案匯入失敗，請確認檔案格式是否正確。');
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   // 匯出排程為文字
   const handleExportSchedule = () => {
     if (!results) return;
@@ -285,6 +321,20 @@ const SchedulePanel = ({ selectedSite, materials = [], setMaterials, consumption
           />
         </div>
         <div className="flex items-center gap-3">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleImport} 
+            accept=".xlsx" 
+            className="hidden" 
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()} 
+            className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200/50 rounded-xl font-bold text-sm flex items-center gap-2 transition-all shadow-sm"
+            title="匯入 Excel 排程"
+          >
+            <Upload className="w-4 h-4" /> 匯入排程
+          </button>
           {results && (
             <button
               onClick={handleExportSchedule}

@@ -160,3 +160,47 @@ export const exportTemplate = () => {
 
   XLSX.writeFile(wb, `匯入格式範例_物料報表.xlsx`);
 };
+
+export const exportScheduleTemplate = () => {
+  const wb = XLSX.utils.book_new();
+
+  const schedData = [
+    {
+      '編號': 'A',
+      '作業名稱': '基礎開挖',
+      '所需材料': '混凝土',
+      '數量': 30,
+      '人力(人)': 5,
+      '工期(天)': 3,
+      '前置作業(逗號分隔)': ''
+    },
+    {
+      '編號': 'B',
+      '作業名稱': '基礎配筋',
+      '所需材料': '鋼筋',
+      '數量': 5,
+      '人力(人)': 8,
+      '工期(天)': 4,
+      '前置作業(逗號分隔)': 'A'
+    },
+    {
+      '編號': 'C',
+      '作業名稱': '基礎混凝土',
+      '所需材料': '混凝土',
+      '數量': 60,
+      '人力(人)': 10,
+      '工期(天)': 5,
+      '前置作業(逗號分隔)': 'A,B'
+    }
+  ];
+
+  const schedWs = XLSX.utils.json_to_sheet(schedData);
+
+  // 設定欄寬
+  schedWs['!cols'] = [
+    { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 22 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, schedWs, "工程排程清單");
+  XLSX.writeFile(wb, `匯入格式範例_工程排程分析.xlsx`);
+};

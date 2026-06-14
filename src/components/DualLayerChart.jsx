@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactECharts from 'echarts-for-react';
 
-const DualLayerChart = ({ data, onDateSelect }) => {
+const DualLayerChart = ({ data, onDateSelect, selectedDate }) => {
   const option = {
     backgroundColor: 'transparent',
     tooltip: {
@@ -114,7 +114,13 @@ const DualLayerChart = ({ data, onDateSelect }) => {
         emphasis: {
           focus: 'series',
           itemStyle: { borderWidth: 2, borderColor: '#fff' }
-        }
+        },
+        markLine: selectedDate ? {
+          symbol: ['none', 'none'],
+          label: { show: true, position: 'start', formatter: '選擇日期' },
+          lineStyle: { color: '#f59e0b', type: 'dashed', width: 2 },
+          data: [{ xAxis: selectedDate }]
+        } : undefined
       },
       {
         name: '單日採購量 (Buy)',
@@ -123,7 +129,13 @@ const DualLayerChart = ({ data, onDateSelect }) => {
         yAxisIndex: 1,
         data: data.map(item => item.procQty),
         itemStyle: { color: '#10b981' },
-        barMaxWidth: 20
+        barMaxWidth: 20,
+        markLine: selectedDate ? {
+          symbol: ['none', 'none'],
+          label: { show: false },
+          lineStyle: { color: '#f59e0b', type: 'dashed', width: 2 },
+          data: [{ xAxis: selectedDate }]
+        } : undefined
       },
       {
         name: '理論消耗量 (Sell)',

@@ -9,9 +9,10 @@ import SupplierInsights from './components/SupplierInsights';
 import { procurementData as initialProc, consumptionData as initialCons } from './data/mockData';
 import { processDashboardData } from './utils/calculationUtils';
 import DateRangeAggregator from './components/DateRangeAggregator';
-import { exportToExcel, exportToWord, exportToTxt, exportTemplate } from './utils/exportUtils';
+import { exportToExcel, exportToWord, exportToTxt, exportTemplate, exportScheduleTemplate } from './utils/exportUtils';
 import { importFromExcel } from './utils/importUtils';
 import SchedulePanel from './components/SchedulePanel';
+import ReplenishModal from './components/ReplenishModal';
 
 const addIds = (list) => list.map((item, idx) => ({ ...item, id: `${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}` }));
 
@@ -53,12 +54,14 @@ function App() {
   const [selectedSite, setSelectedSite] = useState(initialSites[0]);
   const [isSiteDropdownOpen, setIsSiteDropdownOpen] = useState(false);
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
+  const [isTemplateDropdownOpen, setIsTemplateDropdownOpen] = useState(false);
   
   const fileInputRef = useRef(null);
 
   const [selectedMaterial, setSelectedMaterial] = useState('鋼筋');
   const [selectedDate, setSelectedDate] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [replenishModalData, setReplenishModalData] = useState(null);
   const [activeView, setActiveView] = useState('material');
   
   const [materials, setMaterials] = useState(() => {
@@ -108,8 +111,8 @@ function App() {
   [selectedMaterial, consumptions]);
 
   const { timeline, kpis, supplierStats } = useMemo(() => 
-    processDashboardData(filteredProc, filteredCons), 
-  [filteredProc, filteredCons]);
+    processDashboardData(filteredProc, filteredCons, currentMaterialData.leadTime || 3), 
+  [filteredProc, filteredCons, currentMaterialData.leadTime]);
 
   const dateDetails = useMemo(() => {
     if (!selectedDate) return [];
@@ -175,6 +178,16 @@ function App() {
     if (newCapacity !== null && !isNaN(Number(newCapacity)) && newCapacity.trim() !== '') {
       setMaterials(materials.map(m => 
         m.name === newName ? { ...m, capacity: Number(newCapacity) } : m
+      ));
+    }
+  };
+
+  const handleUpdateLeadTime = (newName) => {
+    const material = materials.find(m => m.name === newName);
+    const newLeadTime = prompt(`請輸入「${newName}」的預計叫料天數 (預設: 3):`, material.leadTime || 3);
+    if (newLeadTime !== null && !isNaN(Number(newLeadTime)) && newLeadTime.trim() !== '') {
+      setMaterials(materials.map(m => 
+        m.name === newName ? { ...m, leadTime: Number(newLeadTime) } : m
       ));
     }
   };
@@ -264,26 +277,22 @@ function App() {
     }
   };
 
-  const handleQuickReplenish = (supplier, currentInventory, capacity, materialName) => {
-    const targetInventory = capacity * 0.25;
-    let requiredQty = targetInventory - currentInventory;
-    if (requiredQty <= 0) {
-       requiredQty = capacity * 0.25;
-    }
-    requiredQty = Math.ceil(requiredQty);
-    
-    if (window.confirm(`是否向 ${supplier.name} 自動採購 ${requiredQty.toLocaleString()} 單位，將庫存補足至 25%？\n預估花費: $${(requiredQty * supplier.cost).toLocaleString()}`)) {
-      const newProc = {
-        id: `auto-${Date.now()}`,
-        date: new Date().toISOString().split('T')[0],
-        type: materialName,
-        quantity: requiredQty,
-        supplier: supplier.name,
-        unitPrice: supplier.cost,
-        totalAmount: requiredQty * supplier.cost
-      };
-      setProcurements(prev => [...prev, newProc]);
-    }
+  const handleQuickReplenish = (supplier, currentInventory, capacity, materialName, orderDate, exactShortageConsQty) => {
+    setReplenishModalData({
+      supplier,
+      currentInventory,
+      capacity,
+      materialName,
+      orderDate,
+      exactShortageConsQty
+    });
+  };
+
+  const handleReplenishConfirm = (newProc) => {
+    newProc.id = `auto-${Date.now()}`;
+    setProcurements(prev => [...prev, newProc]);
+    setSelectedDate(newProc.date);
+    setReplenishModalData(null);
   };
 
   const handleSiteChange = (newSite) => {
@@ -416,12 +425,13 @@ function App() {
   const isCapacityWarning = capacityUsagePct >= 85;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-emerald-500/30 pb-20" onClick={() => { setIsSiteDropdownOpen(false); setIsExportDropdownOpen(false); }}>
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-emerald-500/30 pb-20" onClick={() => { setIsSiteDropdownOpen(false); setIsExportDropdownOpen(false); setIsTemplateDropdownOpen(false); }}>
       <RiskBanner 
         isVisible={kpis.isAtRisk} 
         materialName={selectedMaterial}
         defaultSuppliers={currentMaterialData.defaultSuppliers || (currentMaterialData.defaultSupplier ? [{ id: 'supp-old', ...currentMaterialData.defaultSupplier, cost: 0 }] : [])}
-        onQuickReplenish={(supplier) => handleQuickReplenish(supplier, kpis.currentInventory || 0, currentMaterialData.capacity || 10000, selectedMaterial)}
+        onQuickReplenish={(supplier) => handleQuickReplenish(supplier, kpis.currentInventory || 0, currentMaterialData.capacity || 10000, selectedMaterial, kpis.recommendedOrderDate, kpis.exactShortageConsQty)}
+        leadTime={currentMaterialData.leadTime || 3}
       />
       
       <div className="max-w-[1600px] mx-auto p-6 md:p-10">
@@ -523,13 +533,32 @@ function App() {
                 >
                   <Upload className="w-4 h-4" /> 匯入報表
                 </button>
-                <button 
-                  onClick={exportTemplate} 
-                  className="bg-slate-100/50 hover:bg-slate-200/50 text-slate-700 border border-slate-300/50 px-3 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all shadow-lg"
-                  title="下載 Excel 匯入範例"
-                >
-                  <FileDown className="w-4 h-4" /> 下載範例
-                </button>
+                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                  <button 
+                    onClick={() => setIsTemplateDropdownOpen(!isTemplateDropdownOpen)} 
+                    className="bg-slate-100/50 hover:bg-slate-200/50 text-slate-700 border border-slate-300/50 px-3 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all shadow-lg"
+                    title="下載 Excel 匯入範例"
+                  >
+                    <FileDown className="w-4 h-4" /> 下載範例 <ChevronDown className="w-3 h-3 text-slate-400" />
+                  </button>
+
+                  {isTemplateDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-300 rounded-xl shadow-2xl z-50 overflow-hidden">
+                      <button 
+                        onClick={() => { exportTemplate(); setIsTemplateDropdownOpen(false); }}
+                        className="w-full text-left px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors font-medium text-slate-700 flex items-center gap-2 text-sm"
+                      >
+                        <Package className="w-4 h-4 text-emerald-400" /> 物料管理範例
+                      </button>
+                      <button 
+                        onClick={() => { exportScheduleTemplate(); setIsTemplateDropdownOpen(false); }}
+                        className="w-full text-left px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors font-medium text-slate-700 flex items-center gap-2 text-sm"
+                      >
+                        <Clock className="w-4 h-4 text-indigo-400" /> 工程排程範例
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -640,9 +669,9 @@ function App() {
                   <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div> 消耗量</div>
                 </div>
               </div>
-              <DualLayerChart data={timeline} onDateSelect={(date) => setSelectedDate(date)} />
+              <DualLayerChart key={selectedMaterial} data={timeline} onDateSelect={(date) => setSelectedDate(date)} selectedDate={selectedDate} />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <SupplierInsights 
                 stats={supplierStats} 
                 materialType={selectedMaterial} 
@@ -749,6 +778,31 @@ function App() {
                   <PlusCircle className="w-4 h-4" /> 新增預設廠商
                 </button>
               </div>
+
+              <div className="p-8 rounded-3xl border bg-white/40 backdrop-blur-md border-slate-200/50 flex flex-col justify-center relative overflow-hidden group hover:border-orange-400/50 transition-all duration-500 shadow-2xl">
+                <h4 className="font-black text-lg mb-2 flex items-center gap-2 uppercase tracking-tight text-slate-900">
+                  <Clock className="w-5 h-5 text-orange-500" />
+                  預警叫料參數 ({selectedMaterial})
+                </h4>
+                <div className="flex-1 flex flex-col items-center justify-center -my-4">
+                  <div className="text-[100px] font-black text-slate-800 leading-none tracking-tighter">
+                    {currentMaterialData.leadTime || 3}
+                  </div>
+                  <div className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-2">
+                    預計前置天數 (Days)
+                  </div>
+                </div>
+                <div className="mt-8 mb-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl flex items-start gap-2 text-orange-600 text-sm font-bold">
+                  <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <span>當可用庫存低於未來 {currentMaterialData.leadTime || 3} 天的總預估消耗量時，系統將觸發斷料預警。</span>
+                </div>
+                <button 
+                  onClick={() => handleUpdateLeadTime(selectedMaterial)}
+                  className="w-full py-3 bg-orange-600/20 hover:bg-orange-600/40 text-orange-600 border border-orange-500/30 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2"
+                >
+                  <PlusCircle className="w-4 h-4" /> 設定叫料天數
+                </button>
+              </div>
             </div>
           </div>
 
@@ -782,6 +836,13 @@ function App() {
         onSave={handleSaveData} 
         materialType={selectedMaterial} 
         unit={currentMaterialData.unit}
+      />
+
+      <ReplenishModal
+        isOpen={!!replenishModalData}
+        onClose={() => setReplenishModalData(null)}
+        onConfirm={handleReplenishConfirm}
+        data={replenishModalData}
       />
     </div>
   );
